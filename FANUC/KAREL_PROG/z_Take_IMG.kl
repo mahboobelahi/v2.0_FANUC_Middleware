@@ -1,0 +1,105 @@
+PROGRAM z_take_PIC
+----------------------------------------------------
+-- CReation date: 2021.12.02
+-- CReated by: ME
+----------------------------------------------------
+-- Version: V1.1
+----------------------------------------------------
+-- Function: Snap work space image and saves it to UD1 dir
+----------------------------------------------------
+-- Last modified: 2021.12.10
+-- Last modified by: ME                             
+----------------------------------------------------
+%STACKSIZE = 4000
+%ENVIRONMENT REGOPE
+%ENVIRONMENT CVIS
+%ENVIRONMENT  STRNG
+%ALPHABETIZE
+%COMMENT = 'send_PIC_2_zRoki'
+%NOLOCKGROUP
+%NOPAUSE=ERROR+COMMAND+TPENABLE
+
+---------------------------------------------------------------------------------------------------------------
+--DECLARACION DE VARIABLES
+CONST
+	CAMER_VIEW =1
+	dir = 'ud1:vision\IMG.png'--'ud1:/vision/logs/
+	VISPROCESS = 'FIND_CYL'
+	PROG_NAME = 'z_TCPClient3'
+	VIS_REG = 1 --used vision register
+	IMG_REG =1 --used Image Register for storing current snap 
+	SUCCESS = 0
+	--Used Numerical Registers
+	NUM_OBJ = 195 --stores number of detected objects 
+	--used in BG logic
+	SNAP_REG = 199 
+	FTP_Client = 197
+	
+
+VAR
+	STATUS : INTEGER
+	r_flage : BOOLEAN
+	obj_count, i,v,prog_index : INTEGER
+	real_value : REAL
+---------------------------------------------------------------------------------------------------------
+--Error Checking Rutine
+ROUTINE cmd_stat (rec_stat: INTEGER; cmd: STRING)
+BEGIN
+ IF (rec_stat <> SUCCESS) THEN   -- if rec_stat is not SUCCESS
+     -- then post the error
+     --Clear and home user screen.
+      WRITE(CHR(128))
+      WRITE(CHR(137))
+      --Force the user screen.
+      FORCE_SPMENU(TP_PANEL , SPI_TPUSER , 1)
+      WRITE ('Aborting! '+cmd+' command failed!',CR)
+     -- ABORT
+ ENDIF
+END cmd_stat
+
+---------------------------------------------------------------------------------------------------------
+BEGIN
+	--WRITE TPERROR(CHR(128)) 
+	--WRITE(CHR(137),CHR(128))
+	
+	--V_SNAP built-in is used.
+	--Robot controller must be configured to have 1 por more then 1 Image Registors
+	--I am not using due to memory issue 	
+	--For more info consult KAREL Programming Reference's "V " command section  
+	--Run Vision Process
+	re_SNAP::
+	V_SNAP_VIEW(VISPROCESS, CAMER_VIEW, IMG_REG,STATUS)
+	V_SAVE_IMREG(IMG_REG,dir,STATUS) --save Image to directory
+	IF STATUS <> SUCCESS THEN
+		cmd_stat(STATUS,'V_SNAP_VIEW')
+	ELSE
+		V_FIND_VIEW(VISPROCESS, CAMER_VIEW, IMG_REG,STATUS)
+		cmd_stat(STATUS,'V_FIND_VIEW')
+		--GET  number of find objects
+		--a real number will be returned
+		--save find objects count in a numerical register
+		--0:number of find objects
+		V_GET_VPARAM(VISPROCESS, 0, CAMER_VIEW, NUM_OBJ, STATUS)
+		cmd_stat(STATUS,'V_GET_VPARAM')
+		-- get find object count
+		GET_REG(NUM_OBJ, r_flage, obj_count, real_value , STATUS)
+		cmd_stat(STATUS,'GET_REG')
+		--convert to integer
+		obj_count = TRUNC(real_value) 
+		cmd_stat(STATUS,'TRUNC')
+		SET_INT_REG(SNAP_REG,0,STATUS)
+		IF obj_count <> 0 THEN
+			
+			--SET_INT_REG(FTP_Client, 1, status)
+			CALL_PROG(PROG_NAME, prog_index)
+		ELSE 
+			WRITE('Object Counte: ',obj_count,CR)
+			DELAY 6000
+			GOTO re_SNAP
+		ENDIF
+	ENDIF
+		
+END z_take_PIC
+
+
+

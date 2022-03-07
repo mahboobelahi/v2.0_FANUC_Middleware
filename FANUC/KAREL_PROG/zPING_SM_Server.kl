@@ -1,0 +1,71 @@
+PROGRAM z_PING_Sokt
+
+----------------------------------------------------
+-- CReation date: 2021.12.02
+-- CReated by: ME
+----------------------------------------------------
+-- Version: V1.0
+----------------------------------------------------
+-- Function: 
+----------------------------------------------------
+-- Last modified: 2021.12.02
+-- Last modified by: ME                             
+----------------------------------------------------
+%NOLOCKGROUP
+%COMMENT = 'Pings Py Socket Server' 
+%ALPHABETIZE
+%STACKSIZE = 4000
+%NOPAUSE=ERROR+COMMAND+TPENABLE
+--%NOBUSYLAMP
+%ENVIRONMENT  STRNG
+%ENVIRONMENT UIF
+%ENVIRONMENT REGOPE
+%ENVIRONMENT SYSDEF
+%ENVIRONMENT MEMO
+%ENVIRONMENT KCLOP
+%ENVIRONMENT BYNAM
+%ENVIRONMENT FDEV
+%ENVIRONMENT FLBT
+%INCLUDE KLEVKEYS
+%INCLUDE KLEVKMSK
+%INCLUDE KLEVCCDF
+%INCLUDE KLIOUOP
+%INCLUDE KLIOTYPS
+--%DEFGROUP
+----------------------------------------------------
+CONST
+	HOST = 'LenovoUSB'
+	SUCCESS = 0
+--DECLARACION DE VARIABLES
+VAR
+	STATUS : INTEGER
+	int_val: INTEGER
+
+---------------------------------------------------------------------------------------------------------------
+--Error Checking Rutine
+ROUTINE cmd_stat (rec_stat: INTEGER; cmd: STRING)
+BEGIN
+ IF (rec_stat <> SUCCESS) THEN   -- if rec_stat is not SUCCESS
+     -- then post the error
+     --Clear and home user screen.
+      WRITE(CHR(128))
+      WRITE(CHR(137))
+      --Force the user screen.
+      FORCE_SPMENU(TP_PANEL , SPI_TPUSER , 1)
+      WRITE ('Aborting! '+cmd+' command failed!',CR)
+      ABORT
+ ENDIF
+END cmd_stat
+---------------------------------------------------------------------------------------------------------------
+
+BEGIN
+	WRITE(CHR(128))
+	WRITE(CHR(137))
+	WRITE('Pinging Python Socket Server....', CR)
+	MSG_PING(HOST,STATUS)
+	WRITE('PING status: ',STATUS,CR)
+	cmd_stat(STATUS,'MSG_PING')
+END z_PING_Sokt
+
+
+

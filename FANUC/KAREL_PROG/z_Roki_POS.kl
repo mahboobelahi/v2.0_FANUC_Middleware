@@ -1,0 +1,133 @@
+PROGRAM z_V1_RokiPOS
+----------------------------------------------------
+-- Creation date: 2021.12.20
+-- Created by: ME
+----------------------------------------------------
+-- Version: v1
+-- Modified from: HTTP1
+----------------------------------------------------
+-- Function: 
+----------------------------------------------------
+-- Last modified: 2021.12.20
+-- Last modified by: ME                              
+----------------------------------------
+%NOLOCKGROUP
+%ENVIRONMENT  REGOPE
+%ENVIRONMENT MOTN
+%ENVIRONMENT  STRNG
+%COMMENT = 'Validate zRokiPOS'
+%NOABORT=ERROR+COMMAND
+%NOPAUSE=ERROR+COMMAND+TPENABLE
+%ALPHABETIZE
+%STACKSIZE = 4000
+%INCLUDE KLEVKEYS
+%INCLUDE KLEVKMSK
+%INCLUDE KLEVCCDF
+%INCLUDE KLIOUOP
+%INCLUDE KLIOTYPS
+
+CONST
+    cc_SUCCESS = 0
+    reg_ID_CART = 99
+    SNAP_REG = 199
+
+VAR
+    id,J1_angel_str,J2_angel_str,J3_angel_str,J4_angel_str,J5_angel_str,J6_angel_str: STRING[10] --request params, joint angles from zRoki
+    J1,J2,J3,J4,J5,J6:  REAL -- Joint angles in degrees as real numbers
+    joint_pos: JOINTPOS
+    HTTP_res_var : FILE
+    HTTP_Res: STRING[20]
+    UFRAME,UTOOL,CART_POS : POSITION 
+    STATUS,reg_ID_JNT, entry: INTEGER
+    jp_new : ARRAY [6] OF REAL
+    ext_ang : ARRAY [3] OF REAL
+    wjnt_config :CONFIG
+    config_ref :INTEGER
+----------------------------------------------------
+-- BEGIN MyProgram                             
+----------------------------------------------------
+
+BEGIN
+    
+    -- clear the TPERROR screen
+	--FORCE_SPMENU(TP_PANEL,SPI_TPUSER,1)
+	WRITE(CHR(137),CHR(128))
+	--WRITE TPERROR(CHR(128))
+
+    WRITE('Waiting for HTTP Req...',CR)
+    --set file for HTTP response
+    IF UNINIT(HTTP_Res) THEN
+        HTTP_Res='TD:RESPONSE.HTM'
+        WRITE('[X-GPOS] INSIDE',CR)
+    ENDIF
+    
+    WRITE('[X-GPOS] Openign File...',CR)    
+    OPEN FILE HTTP_res_var ('RW', HTTP_Res)
+
+    --File open is a success or not
+    IF IO_STATUS(HTTP_res_var) = cc_SUCCESS THEN
+        WRITE ('[X-GPOS] OK',CR)
+        --converting incomming string of joint angles  to real numbers 
+        CNV_STR_INT(id,reg_ID_JNT)
+        CNV_STR_REAL(J1_angel_str,J1)
+        CNV_STR_REAL(J2_angel_str,J2)
+        CNV_STR_REAL(J3_angel_str,J3)
+        CNV_STR_REAL(J4_angel_str,J4)
+        CNV_STR_REAL(J5_angel_str,J5)
+        CNV_STR_REAL(J6_angel_str,J6)
+        
+        --joint variable vales for a PR can not be
+        -- directly updated like an XYZWPR variable 
+        --get joint values from PR
+        joint_pos=GET_JPOS_REG(reg_ID_JNT,STATUS,1)
+        --for updating old joint angles of a PR
+        --convert joint angles to real number
+        --you can not do, <VAL>.j1=<new angle> like <VAL>.x=<real value>
+        --store joint angles as real numbers in array
+        jp_new[1] = J1
+        jp_new[2] = J2
+        jp_new[3] = J3
+        jp_new[4] = J4
+        jp_new[5] = J5
+        jp_new[6] = J6
+        --update individual angles 
+        CNV_REL_JPOS (jp_new, joint_pos, STATUS)
+        IF STATUS = cc_SUCCESS THEN
+            SET_JPOS_REG(reg_ID_JNT,joint_pos,STATUS,1) 
+            joint_pos=GET_JPOS_REG(reg_ID_JNT,STATUS,1) 
+     
+            IF STATUS = cc_SUCCESS THEN
+                
+                -- get Uframe and tframe for KAREL IK solution
+                GET_VAR(entry, '*SYSTEM*', '$MNUFRAME[1,1]', UFRAME, STATUS)
+                GET_VAR(entry, '*SYSTEM*', '$MNUTOOL[1,4]', UTOOL, STATUS)               
+                config_ref = FULL_SOLN
+                JOINT2POS(joint_pos,UFRAME,UTOOL,config_ref,CART_POS,wjnt_config,ext_ang,STATUS)    
+               
+                --triger camera cycle if point not reachable
+                IF STATUS <> cc_SUCCESS THEN
+                	WRITE('JOINT2POS',STATUS,CR)
+                	POST_ERR(STATUS, '1', 0, 0)
+                	WRITE HTTP_res_var (400,CR)
+                	SET_INT_REG(SNAP_REG,1,STATUS)
+                ELSE
+                	SET_POS_REG(reg_ID_CART,CART_POS,STATUS)
+                	WRITE HTTP_res_var (200,CR) 
+                    WRITE('[X-GPOS] PR values are updated....',CR)               
+                ENDIF
+                WRITE  ('[X-GPOS] Operation is cc_SUCCESSFULL',CR)
+                WRITE ('[X-GPOS] Closing File...',CR)
+                CLOSE FILE HTTP_res_var 
+                
+            ENDIF
+            
+        ENDIF
+    
+    ELSE
+        WRITE ('[X-GPOS] Operation is cc_SUCCESSFULL',CR)
+        WRITE ('[X-GPOS] Closing File...',CR)
+        CLOSE FILE HTTP_res_var 
+    ENDIF 
+
+
+END z_V1_RokiPOS

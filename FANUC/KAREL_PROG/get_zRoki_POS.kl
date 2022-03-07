@@ -1,0 +1,147 @@
+PROGRAM z_getRokiPOS
+----------------------------------------------------
+-- Creation date: 2021.11.01
+-- Created by: ME
+----------------------------------------------------
+-- Version: v1
+-- Modified from: HTTP1
+----------------------------------------------------
+-- Function: 
+----------------------------------------------------
+-- Last modified: 2021.12.20
+-- Last modified by: ME                              
+----------------------------------------
+%NOLOCKGROUP
+%ENVIRONMENT  REGOPE
+--ENVIRONMENT  SYSTEM
+--%TPMOTION 
+%ENVIRONMENT MOTN
+--%ENVIRONMENT MULTI
+%ENVIRONMENT  STRNG
+%COMMENT = 'getPOS_from_zRoki'
+%NOABORT=ERROR+COMMAND
+%NOPAUSE=ERROR+COMMAND+TPENABLE
+%ALPHABETIZE
+%STACKSIZE = 4000
+%INCLUDE KLEVKEYS
+%INCLUDE KLEVKMSK
+%INCLUDE KLEVCCDF
+%INCLUDE KLIOUOP
+%INCLUDE KLIOTYPS
+
+CONST
+    ROBOT_Config= 'NUT'
+    cc_SUCCESS = 0
+    cc_XYZWPR = 2 --Position register has an XYZWPR
+    cc_JNTPOS = 9 --Position register has a JOINTPOS 
+    reg_ID_CART = 99
+    SNAP_REG = 199
+
+VAR
+    id,J1_angel_str,J2_angel_str,J3_angel_str,J4_angel_str,J5_angel_str,J6_angel_str: STRING[10] --request params, joint angles from zRoki
+    J1,J2,J3,J4,J5,J6:  REAL -- Joint angles in degrees as real numbers
+    joint_pos: JOINTPOS
+    lpos : XYZWPR --used in checkEpos
+    HTTP_res_var : FILE
+    HTTP_Res: STRING[20]
+    UFRAME,UTOOL: POSITION 
+    STATUS,reg_ID_JNT, entry: INTEGER
+    jp_new : ARRAY [6] OF REAL
+----------------------------------------------------
+-- BEGIN MyProgram                             
+----------------------------------------------------
+
+BEGIN
+    
+    -- Set Karel IK solver to use uframe 1
+ 
+    -- clear the TPERROR screen
+	--FORCE_SPMENU(TP_PANEL,SPI_TPUSER,1)
+	WRITE(CHR(137),CHR(128))
+	--WRITE TPERROR(CHR(128))
+
+    WRITE('Waiting for HTTP Req...',CR)
+    --set file for HTTP response
+    IF UNINIT(HTTP_Res) THEN
+        HTTP_Res='TD:RESPONSE.HTM'
+        WRITE('[X-GPOS] INSIDE',CR)
+    ENDIF
+    
+    WRITE('[X-GPOS] Openign File...',CR)    
+    OPEN FILE HTTP_res_var ('RW', HTTP_Res)
+
+    --File open is a success or not
+    IF IO_STATUS(HTTP_res_var) = cc_SUCCESS THEN
+        WRITE('[X-GPOS] OK',CR)
+        --converting incomming string of joint angles  to real numbers 
+        CNV_STR_INT(id,reg_ID_JNT)
+        CNV_STR_REAL(J1_angel_str,J1)
+        CNV_STR_REAL(J2_angel_str,J2)
+        CNV_STR_REAL(J3_angel_str,J3)
+        CNV_STR_REAL(J4_angel_str,J4)
+        CNV_STR_REAL(J5_angel_str,J5)
+        CNV_STR_REAL(J6_angel_str,J6)
+        
+        --joint variable vales for a PR can not be
+        -- directly updated like an XYZWPR variable 
+        --get joint values from PR
+        joint_pos=GET_JPOS_REG(reg_ID_JNT,STATUS,1)
+        --for updating old joint angles of a PR
+        --convert joint angles to real number
+        --you can not do, <VAL>.j1=<new angle> like <VAL>.x=<real value>
+        --CNV_JPOS_REL(joint_pos, jp_old, STATUS)
+        --store joint angles as real numbers in array
+        jp_new[1] = J1
+        jp_new[2] = J2
+        jp_new[3] = J3
+        jp_new[4] = J4
+        jp_new[5] = J5
+        jp_new[6] = J6
+        --update individual angles 
+        CNV_REL_JPOS (jp_new, joint_pos, STATUS)
+        IF STATUS = cc_SUCCESS THEN
+            SET_JPOS_REG(reg_ID_JNT,joint_pos,STATUS,1) 
+            --preparing for EPOS_CHECK
+            joint_pos=GET_JPOS_REG(reg_ID_JNT,STATUS,1) 
+     
+            IF STATUS = cc_SUCCESS THEN
+                --converting JPOS to LPOS
+                -- get Uframe and tframe for which reachiability of a position examine
+                GET_VAR(entry, '*SYSTEM*', '$MNUFRAME[1,1]', UFRAME, STATUS)
+                GET_VAR(entry, '*SYSTEM*', '$MNUTOOL[1,4]', UTOOL, STATUS)
+                --get and update PR values whose EPOS need to be checked
+                
+                lpos= GET_POS_REG(reg_ID_CART,STATUS)      
+                lpos=joint_pos 
+                --POST_ERR(STATUS, '1', 0, 0)
+                 IF UNINIT(lpos) THEN
+                     WRITE('UNINT lpos',CR)
+                     CLOSE FILE HTTP_res_var
+                     ABORT
+                 ENDIF
+                --I excluded Group number as i am having stackoverflow error
+                CHECK_EPOS(lpos,UFRAME,UTOOL,STATUS)
+                WRITE('CHECK_EPOS',STATUS,CR)
+                --triger camera cycle if point not reachable
+                IF STATUS <> cc_SUCCESS THEN
+                	POST_ERR(STATUS, '1', 0, 0)
+                	WRITE HTTP_res_var (400,CR)
+                	SET_INT_REG(SNAP_REG,1,STATUS)
+                    WRITE('PR values are not updated...',CR)
+                    WRITE ('[X-GPOS] Operation is not SUCCESSFULL',CR)
+                    WRITE ('[X-GPOS] Closing File...',CR)
+                ELSE
+                	SET_POS_REG(reg_ID_CART,lpos,STATUS)
+                	WRITE HTTP_res_var (200,CR) 
+                    WRITE('PR values updated...',CR)
+                    WRITE ('[X-GPOS] Operation is cc_SUCCESSFULL',CR)
+                    WRITE ('[X-GPOS] Closing File...',CR)
+                ENDIF 
+                CLOSE FILE HTTP_res_var      
+            ENDIF   
+        ENDIF
+    ELSE
+        WRITE ('[X-GPOS] File Operation isnot cc_SUCCESSFULL',CR)
+        CLOSE FILE HTTP_res_var 
+    ENDIF 
+END z_getRokiPOS
