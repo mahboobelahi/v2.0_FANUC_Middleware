@@ -1,6 +1,6 @@
 *.png
-.venv
-*.vscode
+.venv/
+*.vscode/
 *.pyc
 .__pycache__/
 .idea/
