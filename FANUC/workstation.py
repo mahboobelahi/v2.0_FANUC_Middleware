@@ -1,11 +1,15 @@
-import threading,time,requests,json
+import threading,time,requests,json,socket
 from pprint import pprint as P
 from FANUC import app
 from flask import request,jsonify
 from FANUC.configurations import*
 from  flask_mqtt import Mqtt
-
-
+from FANUC.UtilityFunction import ( IMG_bytes_to_JSON,
+                                    parsed_Roki_Msg,
+                                    send_Measurements)
+# Anonymous FTP login
+from ftplib import FTP
+#mqtt = Mqtt(app)
 
 class RobotCell():
     def __init__(self,id,name):
@@ -18,14 +22,39 @@ class RobotCell():
         self.access_token_time=0
         self.expire_time = 0
         self.headers={}
+        #for zRoki
+        self.IMG_Count=1
+        self.VIS_LOG_BASE_DIR = 'ud1:/vision/'
+        self.JSON_DATA={"ImageData":[{"pix/mm":0.623,"format":"PNG",
+                        "Width":640,"Height":480,
+                        "Part_Z_dimention":-269.974}],
+                        "RobotData":[]}
+        
 
-    # accessors and setters
+    # getters 
     def get_ID(self):
         return self.ID
+    def get_IMG_Count(self):
+        return self.IMG_Count
+
+    def get_JSON_DATA(self):
+        return self.JSON_DATA
+    def set_JSON_DATA(self,data):
+        self.JSON_DATA=data
+    
+    def get_headers(self):
+        return self.headers 
+
+    # setters
     def set_source_ID(self, srID):
         self.source_ID = srID
+    def inc_IMG_Count(self):
+        self.IMG_Count = self.IMG_Count+1
+ 
 
-    #####Methods#######  
+    # *******************************************
+    #   Class Methods
+    # *******************************************  
     def getAccessToken(self):
         ACCESS_URL = tokenURL 
         headers = { 'accept': "application/json", 'content-type': "application/x-www-form-urlencoded" }
@@ -42,15 +71,27 @@ class RobotCell():
             time.sleep(1)
             print(f'[X-W-rT] ({self.access_token_time}, {self.expire_time}, {int(time.time()-self.access_token_time)})')
             if int(time.time()-self.access_token_time)>=(self.expire_time-50):
+                                    self.sendEvent('Token','Accessing New Token......')
                                     print(f'[X-W-sm] Accessing New Token.......')
                                     self.getAccessToken()
-    ####DAQ related#####
+    # *******************************************
+    #   DAQ-Related
+    # *******************************************
     #events/alarms/deviceControl etc
-    def handleAlarms(self):
+    def sendAlarm(self):
         pass
 
-    def handleEvents(self):
-        pass
+    def sendEvent(self,type,text):
+        payload = {"externalId": self.get_ID(),
+                    "type": type,
+                    "text": text}
+        try:
+            req = requests.post(f'{SYNCH_URL}/sendEvent',
+                            params=payload,
+                            headers=self.get_headers())
+            print(f'[X-W-SnDE] {req.status_code}')
+        except requests.exceptions.RequestException as err:
+            print ("[X-W-SnDE] OOps: Something Else",err)
 
     def deviceControl(self):
         pass
@@ -66,7 +107,7 @@ class RobotCell():
             if req.status_code == 200:
                 self.set_source_ID(req.json().get('id'))
                 print('[X-W-RD] Device already Registered. Device details are:\n')
-                P(req.json())
+                #P(req.json())
             else:
                 print('[X-W-RD] Registering the device')
                 req_R = requests.post(
@@ -94,7 +135,7 @@ class RobotCell():
             if subs:
                 req = requests.get(f'{ASYNCH_URL}/unsubscribe',
                                 params=payload,headers=self.headers)
-                print(f'[X-W-SUD] Subscribing to Data Source: {self.external_ID}....{req.status_code}')
+                print(f'[X-W-SUD] Subscribing to Data Source: {self.ID}....{req.status_code}')
                 req = requests.get(f'{ASYNCH_URL}/subscribe',
                                 params=payload,headers=self.headers)
                 if req.status_code == 200:
@@ -119,10 +160,52 @@ class RobotCell():
             print ("[X-W-SUD] OOps: Something Else",err)
 
     # *******************************************
-    #   Flask Application
+    #   FTP-Client---->FANUC FTP-Server
     # *******************************************
+ 
+    def download_and_publish_pic(self,mqtt):
+        
+        
+ 
+        #VIS_LOG_BASE_DIR = 'ud1:/vision/'
+        with FTP(FTP_ServerIP) as ftp:
+            print(f'[X-FTP] Welcome Msg from Robot: {ftp.getwelcome()}')
 
-    def runApp(self):
+            # changing to image log dir
+            ftp.cwd(self.VIS_LOG_BASE_DIR)
+            print(f'[X-FTP] Current_Dir: {ftp.pwd()}')
+
+            """
+                FANUC FTP server supports minimal commands that's why 
+                in pervious version old dir method were used for listing
+                all directories.
+                With the modification of z_Take_IMG KAREL source file, navigation in
+                robot FTP server much simplified.
+            """
+
+            #downloading file from FTP-Server
+
+            with open(f'IMG{self.get_IMG_Count()}.png', 'wb') as local_file:
+                        ftp.retrbinary(f'RETR IMG.png', local_file.write)
+                        self.sendEvent('FTP','Workspace image downloaded from FANUC FTP server')
+                        self.sendEvent(f'CameraCycle_{self.get_IMG_Count()} has ended.')
+                        print('[X-FTP] Image downloaded successfully....')
+    
+                # now: encoding the data to json
+                # result: string          
+
+            JSON_STR=json.dumps(IMG_bytes_to_JSON(f'IMG{self.get_IMG_Count()}.png',self.get_JSON_DATA()),indent=2)
+            mqtt.publish(BASE_TOPIC.format(self.ID)+"fromFANUC",JSON_STR)
+            self.inc_IMG_Count()
+            print('[X-FTP] Data published successfully....')
+            send_Measurements(  self.JSON_DATA,self.get_ID(),
+                                self.get_IMG_Count(),
+                                self.get_headers())
+    
+    # ************************************************
+    #   connect to FANUC Socket Client and ZDMP MsgBus
+    # ************************************************
+    def start_socket_server(self):
         mqtt = Mqtt(app)
         #####MQTT Endpoints################
         @mqtt.on_connect()
@@ -164,14 +247,58 @@ class RobotCell():
         def handle_mqtt_message(client, userdata, message):
             try:
                 payload=json.loads(message.payload)
-                print(f"{type(payload)},'??',{payload}")
-                
+                print(f"[X-W-MQTT] {type(payload)},'??',{payload}")
+                threading.Thread(target=parsed_Roki_Msg,
+                            args=(payload,self),
+                            daemon=True).start()
                         
             except ValueError:
                 print('[X-W-MQTT] Decoding JSON has failed')
+        
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind((LocIP,LocPort))
+        sock.listen(1)
+        
+        while True:
+            print("[X-SC] Waiting for connection...")
+            conn, client_address = sock.accept()
+
+            print("[X-SC] Connection from ", client_address)
+            
+            while True:
+                data = conn.recv(1024)
+                #print(f'[X-SC] {data}')
+                if data != b'':
+                    data = data.decode().strip().split()
+                    print(f'[X-SC] {data}')
+                    if len(data)>1:
+                        dat = self.get_JSON_DATA()
+                    #     dat["RobotData"].append({
+                    #                         data[0]:dict(
+                    #                         [("XYZ",[float(i) for i in data[1:4] ]),
+                    #                         ("WPR",[float(i) for i in data[4:] ]),
+                    #                         ("CONFIG","NUT000")]
+                    #                         )})
+                    # self.set_JSON_DATA(dat)
+                else:
+                    print('[X-SC] BREAK LOOP')
+                    break
+
+
+            #print('[X-SC] IN LOOP')
+            threading.Timer(0.5, self.download_and_publish_pic,args=(mqtt,)).start()
+            #P(JSON_DATA)
+            time.sleep(1)
+        
+        #conn.sendall(data)
+
+    # *******************************************
+    #   Flask Application
+    # *******************************************
+    
+    def runApp(self):
 
         ########Flask Application Endpoints################
-
 
         @app.route('/', methods=['GET'])
         def index():
