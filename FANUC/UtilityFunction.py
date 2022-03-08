@@ -26,6 +26,12 @@ def IMG_bytes_to_JSON(image,JSON_DATA):
                     JSON_DATA.update({"timeStamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S')})
                     return JSON_DATA
        
+#Robot information cycle 1
+def start_camera_cycle(obj):
+    req = requests.get(f'{ORCHESTRATOR_URL}', params={"CMD":199})
+    obj.sendEvent(f'CameraCycle',f'CameraCycle_{obj.get_IMG_Count()} has started.')
+    print(f'[X-UFF] Status Code: {req.status_code}')  
+
 def parsed_Roki_Msg(Roki_Msg,self):
     #de-serialize incomming JSON string to python dictionary
     #Msg_dict = json.loads(Roki_Msg)
@@ -49,14 +55,21 @@ def parsed_Roki_Msg(Roki_Msg,self):
                 if int(req.text) == 200:
                     print("[X-UH] Reachable POS....")
                     time.sleep(0.1)
-                    self.sendEvent('POS',f'Picking cylinder with IK Solution {j_angles}')
+                    self.sendEvent('POS',f'POS-Reg is updated with IK Solution {j_angles}')
                     self.sendEvent('RobotCycle', 'Robot cycle is initiatiated.')
                     req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":198})
                     print(f'[X-UH] Updating POS... {req.status_code}')
                 else:
                     print("[X-UH] Not-Reachable POS....")
                     self.sendEvent('RobotCycle', 'Robot cycle not initiatiated.')
-                    self.sendEvent('POS',f'IK Solution {j_angles} Not Reachable!')
+                    self.sendEvent('POS',f'POS-Reg not updated for IK Solution {j_angles} coz, Not Reachable!')
+                    try:
+                        time.sleep(1)
+                        start_camera_cycle(self)
+                        # req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":199})
+                        # print(f'[X-UH] {req.status_code}')
+                    except requests.exceptions.RequestException as err:
+                        print ("[X-W-SUD] OOps: Something Else",err)
             except requests.exceptions.RequestException as err:
                 print ("[X-W-SUD] OOps: Something Else",err)
     else:
@@ -64,8 +77,9 @@ def parsed_Roki_Msg(Roki_Msg,self):
             print("[X-UH] No IK Solutions....")
             print("[X-UH] Now starting camera cycle...")
             time.sleep(1)
-            req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":199})
-            print(f'[X-UH] {req.status_code}')
+            start_camera_cycle(self)
+            # req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":199})
+            # print(f'[X-UH] {req.status_code}')
         except requests.exceptions.RequestException as err:
             print ("[X-W-SUD] OOps: Something Else",err)
 
@@ -86,11 +100,7 @@ def update_POS(POS):
     req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":198})
     print(f'[X-UH] {req.url}')
 
-#Robot information cycle 1
-def start_camera_cycle(obj):
-    req = requests.get(f'{ORCHESTRATOR_URL}', params={"CMD":199})
-    obj.sendEvent(f'CameraCycle',f'CameraCycle_{obj.get_IMG_Count()} has started.')
-    print(f'[X-UFF] Status Code: {req.status_code}')    
+  
 
 #SYNCHRONOUSLY sending measurements on custom endpoint
 def send_Measurements(JSON_DATA,ID,count,headers):
