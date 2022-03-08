@@ -1,7 +1,8 @@
 *.png
-.venv/
+*.venv/
 *.vscode/
 *.pyc
 .__pycache__/
+.FANUC/files/
 .idea/
 *.TP
