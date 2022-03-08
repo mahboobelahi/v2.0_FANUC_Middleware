@@ -56,22 +56,29 @@ class RobotCell():
     #   Class Methods
     # *******************************************  
     def getAccessToken(self):
-        ACCESS_URL = tokenURL 
-        headers = { 'accept': "application/json", 'content-type': "application/x-www-form-urlencoded" }
-        payload = "grant_type=password&client_id=ZDMP_API_MGMT_CLIENT&username=zdmp_api_mgmt_test_user&password=ZDMP2020!"
-        response = requests.post(ACCESS_URL, data=payload, headers=headers)
-        self.token = response.json().get('access_token')
-        self.access_token_time = int(time.time())
-        self.expire_time = response.json().get('expires_in')
-        self.headers={"Authorization": f"Bearer {self.token}"}
-        print(f'[X-W-Tk] ({response.status_code})')
+        try:
+            ACCESS_URL = tokenURL 
+            headers = { 'accept': "application/json", 'content-type': "application/x-www-form-urlencoded" }
+            payload = "grant_type=password&client_id=ZDMP_API_MGMT_CLIENT&username=zdmp_api_mgmt_test_user&password=ZDMP2020!"
+            response = requests.post(ACCESS_URL, data=payload, headers=headers)
+            if response.status_code ==200:
+                self.token = response.json().get('access_token')
+                self.access_token_time = int(time.time())
+                self.expire_time = response.json().get('expires_in')
+                self.headers={"Authorization": f"Bearer {self.token}"}
+                print(f'[X-W-Tk] ({response.status_code})')
+                self.sendEvent('Token','Accessing Token......')
+            else:
+                print(f"[X-W-Tk] {response.status_code}")
+        except requests.exceptions.RequestException as err:
+            print ("[X-W-Tk] OOps: Something Else",err)
 
     def refreshToken(self):
         while True:
             time.sleep(1)
             print(f'[X-W-rT] ({self.access_token_time}, {self.expire_time}, {int(time.time()-self.access_token_time)})')
             if int(time.time()-self.access_token_time)>=(self.expire_time-50):
-                                    self.sendEvent('Token','Accessing New Token......')
+                                    #self.sendEvent('Token','Refreshing Token......')
                                     print(f'[X-W-sm] Accessing New Token.......')
                                     self.getAccessToken()
     # *******************************************
@@ -88,10 +95,16 @@ class RobotCell():
         try:
             req = requests.post(f'{SYNCH_URL}/sendEvent',
                             params=payload,
-                            headers=self.get_headers())
+                            headers=self.get_headers(),timeout=3)
             print(f'[X-W-SnDE] {req.status_code}')
+        except requests.exceptions.HTTPError as errh:
+            print ("[X-W-RD] Http Error:",errh)
+        except requests.exceptions.ConnectionError as errc:
+            print ("[X-W-RD] Error Connecting:",errc)
+        except requests.exceptions.Timeout as errt:
+            print ("[X-W-RD] Timeout Error:",errt)
         except requests.exceptions.RequestException as err:
-            print ("[X-W-SnDE] OOps: Something Else",err)
+            print ("[X-W-RD] OOps: Something Else",err)
 
     def deviceControl(self):
         pass
@@ -116,6 +129,7 @@ class RobotCell():
                 print(f'Http Status Code: {req_R.status_code}')
                 # setting souece ID of device
                 self.set_source_ID(req_R.json().get('id'))
+                self.sendEvent('DAQ-ADMIN','Robot info accessed.')
                 print('[X-W-RD] Device Registered Successfully.\n')
                 # pprint(req_R.json())
         except requests.exceptions.HTTPError as errh:
@@ -135,13 +149,26 @@ class RobotCell():
             if subs:
                 req = requests.get(f'{ASYNCH_URL}/unsubscribe',
                                 params=payload,headers=self.headers)
-                print(f'[X-W-SUD] Subscribing to Data Source: {self.ID}....{req.status_code}')
+                self.sendEvent('DAQ-ASYNC','Data source have unsubscribed to previous subscriptions.....')
+                print(f'[X-W-SUDU] Subscribing to Data Source: {self.ID}....{req.status_code}')
                 req = requests.get(f'{ASYNCH_URL}/subscribe',
                                 params=payload,headers=self.headers)
                 if req.status_code == 200:
+                    self.sendEvent('DAQ-ASYNC','Data source have subscribed to ASYNC data access...')
                     print(f'[X-W-SUD] Subscrption Status: {req.status_code} {req.reason}')
+
+                elif req.status_code == 500:
+                    time.sleep(1)
+                    req = requests.get(f'{ASYNCH_URL}/subscribe',
+                                params=payload,headers=self.headers)
+                    if req.status_code == 200:
+                        self.sendEvent('DAQ-ASYNC','Data source have subscribed to ASYNC data access...')
+                        print(f'[X-W-SUD] Subscrption Status: {req.status_code} {req.reason}')
+
                 else:
                     print(f'[X-W-SUD] Subscrption Status: {req.status_code} {req.reason}')
+                    
+                    
             else:
                 req = requests.get(f'{ASYNCH_URL}/unsubscribe',
                                 params=payload,headers=self.headers)
@@ -188,14 +215,14 @@ class RobotCell():
             with open(f'IMG{self.get_IMG_Count()}.png', 'wb') as local_file:
                         ftp.retrbinary(f'RETR IMG.png', local_file.write)
                         self.sendEvent('FTP','Workspace image downloaded from FANUC FTP server')
-                        self.sendEvent(f'CameraCycle_{self.get_IMG_Count()} has ended.')
+                        self.sendEvent('CameraCycle',f'CameraCycle_{self.get_IMG_Count()} has ended.')
                         print('[X-FTP] Image downloaded successfully....')
     
                 # now: encoding the data to json
                 # result: string          
 
             JSON_STR=json.dumps(IMG_bytes_to_JSON(f'IMG{self.get_IMG_Count()}.png',self.get_JSON_DATA()),indent=2)
-            mqtt.publish(BASE_TOPIC.format(self.ID)+"fromFANUC",JSON_STR)
+            mqtt.publish(BASE_TOPIC_DAQ.format(self.ID)+"fromFANUC",JSON_STR)
             self.inc_IMG_Count()
             print('[X-FTP] Data published successfully....')
             send_Measurements(  self.JSON_DATA,self.get_ID(),
@@ -211,18 +238,18 @@ class RobotCell():
         @mqtt.on_connect()
         def handle_connect(client, userdata, flags, rc):
             if rc==0:
-
+                self.sendEvent('MsgBus',f'FANUC connected to public instance of ZDMP-MsgBus.')
                 print("[X-W-MQTT] connected, OK Returned code=",rc)
                 #subscribe to tpoics
                 time.sleep(0.1)
                 mqtt.unsubscribe_all()
                 #mqtt.unsubscribe(BASE_TOPIC)
                 time.sleep(1)
-                mqtt.subscribe(BASE_TOPIC.format(self.ID)+"IKsolution")
+                mqtt.subscribe(BASE_TOPIC_DAQ.format(self.ID)+"IKsolution")
                 # IKsolution = BASE_TOPIC.format(self.ID)
                 # IKsolution=IKsolution+"IKsolution"
                 # mqtt.subscribe(IKsolution)
-                print(f'[X-W-MQTT] Subscribed to: {BASE_TOPIC.format(self.ID)+"IKsolution"}')  
+                print(f'[X-W-MQTT] Subscribed to: {BASE_TOPIC_DAQ.format(self.ID)+"IKsolution"}')  
                 #print(f'[X-W-MQTT] Subscribed to: {IKsolution}')    
             else:
                 print("[X-W-MQTT] Bad connection Returned code=",rc)
@@ -238,6 +265,7 @@ class RobotCell():
 
         @mqtt.on_disconnect()
         def handle_disconnect():
+            self.sendEvent('MsgBus',f'FANUC disconnected from ZDMP-MsgBus.')
             mqtt.unsubscribe_all()
             # mqtt.unsubscribe(BASE_TOPIC)
             mqtt.unsubscribe_all()
@@ -246,6 +274,7 @@ class RobotCell():
         @mqtt.on_message()
         def handle_mqtt_message(client, userdata, message):
             try:
+                self.sendEvent('MsgBus',f'FANUC connected to public instance of ZDMP-MsgBus.')
                 payload=json.loads(message.payload)
                 print(f"[X-W-MQTT] {type(payload)},'??',{payload}")
                 threading.Thread(target=parsed_Roki_Msg,
@@ -269,23 +298,28 @@ class RobotCell():
                 data = conn.recv(1024)
                 #print(f'[X-SC] {data}')
                 if data != b'':
+                    self.sendEvent('FANUC-Socket',f'FANUC socket client connected to middleware Socket Server.')
                     data = data.decode().strip().split()
                     print(f'[X-SC] {data}')
                     if len(data)>1:
+                       
                         dat = self.get_JSON_DATA()
-                    #     dat["RobotData"].append({
-                    #                         data[0]:dict(
-                    #                         [("XYZ",[float(i) for i in data[1:4] ]),
-                    #                         ("WPR",[float(i) for i in data[4:] ]),
-                    #                         ("CONFIG","NUT000")]
-                    #                         )})
-                    # self.set_JSON_DATA(dat)
+                        #during debugging comment all before else
+                        dat["RobotData"].append({
+                                            data[0]:dict(
+                                            [("XYZ",[float(i) for i in data[1:4] ]),
+                                            ("WPR",[float(i) for i in data[4:] ]),
+                                            ("CONFIG","NUT000")]
+                                            )})
+                    self.set_JSON_DATA(dat)
+                    self.sendEvent('FANUC-Socket',f'Data received and closing socket.')
                 else:
                     print('[X-SC] BREAK LOOP')
                     break
 
 
             #print('[X-SC] IN LOOP')
+            self.sendEvent('FANUC-FTP',f'Middleware FTP-client downloading image from FANUC FTP server.')
             threading.Timer(0.5, self.download_and_publish_pic,args=(mqtt,)).start()
             #P(JSON_DATA)
             time.sleep(1)
