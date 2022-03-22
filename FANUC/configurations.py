@@ -20,7 +20,7 @@ TOPIC_TYPE= 'multi'
 #Robot-KAREL URLS
 ORCHESTRATOR_URL = 'http://192.168.1.1/KAREL/z_Orchstrate'
 #ORCHESTRATOR_URL = 'http://192.168.1.1/KAREL/z_Orc_v1_1'
-UPDATE_POS_REG = 'http://192.168.1.1/KAREL/z_getRokiPOS'
+UPDATE_POS_REG = 'http://192.168.1.1/KAREL/'
 
 #FANUC Socket and FTP  Server
 socket_ServerIP = '192.168.1.1'
