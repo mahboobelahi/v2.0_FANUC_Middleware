@@ -225,9 +225,9 @@ class RobotCell():
             mqtt.publish(BASE_TOPIC_DAQ.format(self.ID)+"fromFANUC",JSON_STR)
             self.inc_IMG_Count()
             print('[X-FTP] Data published successfully....')
-            send_Measurements(  self.JSON_DATA,self.get_ID(),
-                                self.get_IMG_Count(),
-                                self.get_headers())
+            # send_Measurements(  self.JSON_DATA,self.get_ID(),
+            #                     self.get_IMG_Count(),
+            #                     self.get_headers())
     
     # ************************************************
     #   connect to FANUC Socket Client and ZDMP MsgBus
@@ -298,7 +298,7 @@ class RobotCell():
                 data = conn.recv(1024)
                 #print(f'[X-SC] {data}')
                 if data != b'':
-                    self.sendEvent('FANUC-Socket',f'FANUC socket client connected to middleware Socket Server.')
+                    #self.sendEvent('FANUC-Socket',f'FANUC socket client connected to middleware Socket Server.')
                     data = data.decode().strip().split()
                     print(f'[X-SC] {data}')
                     if len(data)>1:
@@ -312,7 +312,7 @@ class RobotCell():
                                             ("CONFIG","NUT000")]
                                             )})
                     self.set_JSON_DATA(dat)
-                    self.sendEvent('FANUC-Socket',f'Data received and closing socket.')
+                    #self.sendEvent('FANUC-Socket',f'Data received and closing socket.')
                 else:
                     print('[X-SC] BREAK LOOP')
                     break
@@ -320,8 +320,11 @@ class RobotCell():
 
             #print('[X-SC] IN LOOP')
             self.sendEvent('FANUC-FTP',f'Middleware FTP-client downloading image from FANUC FTP server.')
+            #print(f'[X-SC] {self.get_JSON_DATA()}')
             threading.Timer(0.5, self.download_and_publish_pic,args=(mqtt,)).start()
-            #P(JSON_DATA)
+            
+            self.get_JSON_DATA().get("RobotData").clear()
+            #P(self.get_JSON_DATA())
             time.sleep(1)
         
         #conn.sendall(data)
