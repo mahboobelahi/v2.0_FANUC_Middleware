@@ -6,7 +6,8 @@ from FANUC.configurations import*
 from  flask_mqtt import Mqtt
 from FANUC.UtilityFunction import ( IMG_bytes_to_JSON,
                                     parsed_Roki_Msg,
-                                    send_Measurements)
+                                    send_Measurements,
+                                    update_POS)
 # Anonymous FTP login
 from ftplib import FTP
 #mqtt = Mqtt(app)
@@ -245,11 +246,11 @@ class RobotCell():
                 mqtt.unsubscribe_all()
                 #mqtt.unsubscribe(BASE_TOPIC)
                 time.sleep(1)
-                mqtt.subscribe(BASE_TOPIC_DAQ.format(self.ID)+"IKsolution")
+                mqtt.subscribe(BASE_TOPIC_DAQ.format(self.ID)+"fromRoki")
                 # IKsolution = BASE_TOPIC.format(self.ID)
                 # IKsolution=IKsolution+"IKsolution"
                 # mqtt.subscribe(IKsolution)
-                print(f'[X-W-MQTT] Subscribed to: {BASE_TOPIC_DAQ.format(self.ID)+"IKsolution"}')  
+                print(f'[X-W-MQTT] Subscribed to: {BASE_TOPIC_DAQ.format(self.ID)+"fromRoki"}')  
                 #print(f'[X-W-MQTT] Subscribed to: {IKsolution}')    
             else:
                 print("[X-W-MQTT] Bad connection Returned code=",rc)
@@ -277,10 +278,12 @@ class RobotCell():
                 self.sendEvent('MsgBus',f'FANUC connected to public instance of ZDMP-MsgBus.')
                 payload=json.loads(message.payload)
                 print(f"[X-W-MQTT] {type(payload)},'??',{payload}")
-                threading.Thread(target=parsed_Roki_Msg,
+                # threading.Thread(target=parsed_Roki_Msg,
+                #             args=(payload,self),
+                #             daemon=True).start()
+                threading.Thread(target=update_POS,
                             args=(payload,self),
                             daemon=True).start()
-                        
             except ValueError:
                 print('[X-W-MQTT] Decoding JSON has failed')
         
