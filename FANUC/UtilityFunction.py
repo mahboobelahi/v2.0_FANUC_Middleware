@@ -57,29 +57,32 @@ def parsed_Roki_Msg(Roki_Msg,self):
                     time.sleep(0.1)
                     self.sendEvent('POS',f'POS-Reg is updated with IK Solution {j_angles}')
                     self.sendEvent('RobotCycle', 'Robot cycle is initiatiated.')
-                    req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":198})
-                    print(f'[X-UH] Updating POS... {req.status_code}')
+                    # req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":198})
+                    # print(f'[X-UH] Updating POS... {req.status_code}')
                 else:
                     print("[X-UH] Not-Reachable POS....")
                     self.sendEvent('RobotCycle', 'Robot cycle not initiatiated.')
                     self.sendEvent('POS',f'POS-Reg not updated for IK Solution {j_angles} coz, Not Reachable!')
+                    
                     try:
-                        time.sleep(1)
-                        start_camera_cycle(self)
-                        # req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":199})
-                        # print(f'[X-UH] {req.status_code}')
+                        
+                        #start_camera_cycle(self)
+                        req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":199})
+                        print(f'[X-UH-Cam] {req.status_code}')
+                        #time.sleep(1)
                     except requests.exceptions.RequestException as err:
                         print ("[X-W-SUD] OOps: Something Else",err)
             except requests.exceptions.RequestException as err:
                 print ("[X-W-SUD] OOps: Something Else",err)
     else:
         try:
-            print("[X-UH] No IK Solutions....")
-            print("[X-UH] Now starting camera cycle...")
+            print("[X-UH-NK] No IK Solutions....")
+            print("[X-UH-NK] Now starting camera cycle...")
+            
+            #start_camera_cycle(self)
+            req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":199})
+            print(f'[X-UH] {req.status_code}')
             time.sleep(1)
-            start_camera_cycle(self)
-            # req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":199})
-            # print(f'[X-UH] {req.status_code}')
         except requests.exceptions.RequestException as err:
             print ("[X-W-SUD] OOps: Something Else",err)
 
@@ -111,7 +114,7 @@ def send_Measurements(JSON_DATA,ID,count,headers):
     # setting query string
     JSON_DATA.get("ImageData")[0]["Picture"]=count
     payload = {"externalId": ID,
-                "fragment": f'LR-Mate'}
+                "fragment": f'LR-Mate/fromFANUC'}
     payload = urllib.parse.urlencode(payload, safe='/')
     print(type(JSON_DATA),JSON_DATA)
     req = requests.post(f'{SYNCH_URL}/sendCustomMeasurement',
