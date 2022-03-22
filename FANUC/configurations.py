@@ -27,7 +27,7 @@ socket_ServerIP = '192.168.1.1'
 socket_PORT = 1162      # The port used by the server
 FTP_ServerIP = '192.168.1.1'
 BASE_TOPIC = 'LR-Mate/'
-BASE_TOPIC_DAQ = 'T5_1-Data-Acquisition/Datasource ID: {} - MultiTopic/LR-Mate/'
+BASE_TOPIC_DAQ = 'LR-Mate/'#T5_1-Data-Acquisition/Datasource ID: {} - MultiTopic/LR-Mate/
 VIS_LOG_BASE_DIR = 'ud1:/vision/logs/'
 #DAQ URLs
 ADMIN_URL = f'http://apigw-zdmp.platform.zdmp.eu/gateway/data-acquisition-admin-service/v0'#f'http://192.168.100.100:30025'
