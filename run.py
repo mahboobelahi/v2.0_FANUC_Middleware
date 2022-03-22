@@ -14,8 +14,7 @@ if __name__ == '__main__':
     refreshToken.start()
 
     """
-        Register robot to ZDMP-DAQ component. It is one time API call and can be
-        done using any REST-client like Postman etc. 
+        Register robot to ZDMP-DAQ component. 
     """
     registerRobot=threading.Timer(0.5, _fanuc.register_device)
     registerRobot.daemon=True
