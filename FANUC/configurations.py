@@ -17,6 +17,9 @@ USER = 'tau'
 PASSWORD =  'ZDMP-tau2020!'
 TOPIC_TYPE= 'multi'
 
+#Roki
+results=["reachable","not reachable","","error"]
+rokiMsg=[]
 #Robot-KAREL URLS
 ORCHESTRATOR_URL = 'http://192.168.1.1/KAREL/z_Orchstrate'
 #ORCHESTRATOR_URL = 'http://192.168.1.1/KAREL/z_Orc_v1_1'
