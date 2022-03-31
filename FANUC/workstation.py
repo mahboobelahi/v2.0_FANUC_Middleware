@@ -5,8 +5,6 @@ from flask import request,jsonify
 from FANUC.configurations import*
 from  flask_mqtt import Mqtt
 from FANUC.UtilityFunction import ( IMG_bytes_to_JSON,
-                                    parsed_Roki_Msg,
-                                    send_Measurements,
                                     update_POS)
 # Anonymous FTP login
 from ftplib import FTP
@@ -26,10 +24,14 @@ class RobotCell():
         #for zRoki
         self.IMG_Count=1
         self.VIS_LOG_BASE_DIR = 'ud1:/vision/'
-        self.JSON_DATA={"ImageData":[{"pix/mm":0.623,"format":"PNG",
+        self.JSON_DATA={"ImageData":{"pix/mm":0.623,"format":"PNG",
                         "Width":640,"Height":480,
-                        "Part_Z_dimention":-269.974}],
-                        "RobotData":[]}
+                        "Part_Z_dimention":-269.974,
+                        "Picture":""},
+                        "RobotData":{}
+                        }
+        
+        self.toJson = []
         
 
     # getters 
@@ -49,9 +51,16 @@ class RobotCell():
     # setters
     def set_source_ID(self, srID):
         self.source_ID = srID
+
     def inc_IMG_Count(self):
         self.IMG_Count = self.IMG_Count+1
  
+    def toJsonFile(self):
+        self.toJson.append(self.get_JSON_DATA().copy())
+        with open('fromFANUC.json', 'w') as outfile:
+            json.dump(self.toJson, outfile,
+                        indent=4)#,  separators=(',',': ')
+
 
     # *******************************************
     #   Class Methods
@@ -222,10 +231,14 @@ class RobotCell():
                 # now: encoding the data to json
                 # result: string          
 
-            JSON_STR=json.dumps(IMG_bytes_to_JSON(f'IMG{self.get_IMG_Count()}.png',self.get_JSON_DATA()),indent=2)
-            mqtt.publish(BASE_TOPIC_DAQ.format(self.ID)+"fromFANUC",JSON_STR)
+            JSON_STR=json.dumps(IMG_bytes_to_JSON(f'IMG{self.get_IMG_Count()}.png',self),indent=2)
+            mqtt.publish(BASE_TOPIC_DAQ.format(self.ID)+"fromFANUC",JSON_STR,retain=False)
             self.inc_IMG_Count()
+            #time.sleep(1)
+            threading.Thread(target=self.toJsonFile).start()
             print('[X-FTP] Data published successfully....')
+
+            #to DAQ
             # send_Measurements(  self.JSON_DATA,self.get_ID(),
             #                     self.get_IMG_Count(),
             #                     self.get_headers())
@@ -247,11 +260,7 @@ class RobotCell():
                 #mqtt.unsubscribe(BASE_TOPIC)
                 time.sleep(1)
                 mqtt.subscribe(BASE_TOPIC_DAQ.format(self.ID)+"fromRoki")
-                # IKsolution = BASE_TOPIC.format(self.ID)
-                # IKsolution=IKsolution+"IKsolution"
-                # mqtt.subscribe(IKsolution)
-                print(f'[X-W-MQTT] Subscribed to: {BASE_TOPIC_DAQ.format(self.ID)+"fromRoki"}')  
-                #print(f'[X-W-MQTT] Subscribed to: {IKsolution}')    
+                print(f'[X-W-MQTT] Subscribed to: {BASE_TOPIC_DAQ.format(self.ID)+"fromRoki"}')    
             else:
                 print("[X-W-MQTT] Bad connection Returned code=",rc)
 
@@ -277,6 +286,11 @@ class RobotCell():
             try:
                 self.sendEvent('MsgBus',f'FANUC connected to public instance of ZDMP-MsgBus.')
                 payload=json.loads(message.payload)
+                rokiMsg.append(payload.copy())
+                with open('fromRoki.json', 'w') as outfile:
+                    json.dump(rokiMsg, outfile,
+                                indent=4,  
+                                separators=(',',': '))
                 print(f"[X-W-MQTT] {type(payload)},'??',{payload}")
                 # threading.Thread(target=parsed_Roki_Msg,
                 #             args=(payload,self),
@@ -298,23 +312,35 @@ class RobotCell():
             print("[X-SC] Connection from ", client_address)
             
             while True:
+                
                 data = conn.recv(1024)
                 #print(f'[X-SC] {data}')
+                dat = self.get_JSON_DATA()
                 if data != b'':
                     #self.sendEvent('FANUC-Socket',f'FANUC socket client connected to middleware Socket Server.')
+                    
                     data = data.decode().strip().split()
-                    print(f'[X-SC] {data}')
+                    #print(f'[X-SC] {data}')
                     if len(data)>1:
                        
-                        dat = self.get_JSON_DATA()
+                        
                         #during debugging comment all before else
-                        dat["RobotData"].append({
-                                            data[0]:dict(
-                                            [("XYZ",[float(i) for i in data[1:4] ]),
-                                            ("WPR",[float(i) for i in data[4:] ]),
-                                            ("CONFIG","NUT000")]
-                                            )})
+                        
+                        if dat.get("RobotData").get(data[0]) == None:
+                            #print("data_0 ",data[0])
+                            dat["RobotData"][data[0]]=dict(
+                                                            [("XYZ",[float(i) for i in data[1:4] ]),
+                                                            ("WPR",[float(i) for i in data[4:] ]),
+                                                            ("CONFIG","NUT000")]
+                                                            )
+                        else:  
+                            dat["RobotData"][data[0]]= dict(
+                                                            [("XYZ",[float(i) for i in data[1:4] ]),
+                                                            ("WPR",[float(i) for i in data[4:] ]),
+                                                            ("CONFIG","NUT000")]
+                                                            )
                     self.set_JSON_DATA(dat)
+                    #print(dat)
                     #self.sendEvent('FANUC-Socket',f'Data received and closing socket.')
                 else:
                     print('[X-SC] BREAK LOOP')
@@ -326,7 +352,7 @@ class RobotCell():
             #print(f'[X-SC] {self.get_JSON_DATA()}')
             threading.Timer(0.5, self.download_and_publish_pic,args=(mqtt,)).start()
             
-            self.get_JSON_DATA().get("RobotData").clear()
+            #self.get_JSON_DATA().get("RobotData").clear()
             #P(self.get_JSON_DATA())
             time.sleep(1)
         
