@@ -36,14 +36,15 @@ if __name__ == '__main__':
     SocketComm.daemon = True
     SocketComm.start()
 
-    #start camera cycle 
-    camCycle = threading.Timer(4, start_camera_cycle, args=(_fanuc,))
+    #start camera cycle
+
+    camCycle = threading.Timer(2, start_camera_cycle, args=(_fanuc,))
     camCycle.daemon = True
     camCycle.start()
-    
+ 
     # start Flask server for robot
     #wait for execution of previous functions
-    runApp = threading.Timer(2, _fanuc.runApp())
+    runApp = threading.Timer(.1, _fanuc.runApp())
     runApp.daemon = True
     runApp.start()
 
