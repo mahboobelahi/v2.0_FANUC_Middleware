@@ -1,0 +1,53 @@
+{
+  "name": "ModeloAI",
+  "description": "test de AI Analytics Runtime por MQTT",
+  "tags": [ "test" ],
+  "version": 7,
+
+  "input":
+  {
+    "prediction":
+    [
+      {
+        "type": "MESSAGE_BUS",
+        "payload":
+        {
+
+			"routingKeys": 
+					[
+						{
+							"name":"RoKi-AI.input"
+						}
+					]
+
+          }
+        }
+      ]
+    },
+  "output":
+  {
+    "prediction":
+    [
+
+      {
+        "type": "MESSAGE_BUS",
+        "payload":
+        {
+			"routingKeys": 
+					[
+						{
+							"name":"RoKi-AI.output"
+						}
+					]
+        }
+      }
+    ]
+  },
+  "modelData":
+  {
+    "type": "PYTHON",
+    "payload": {
+      "dependencies": [ { "name": "numpy", "version": "1.18.1" } ]
+    }
+  }
+}
