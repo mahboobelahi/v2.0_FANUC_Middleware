@@ -1,19 +1,22 @@
-import requests,threading,json,urllib.parse,time
+import requests,threading,json,urllib.parse,time,uuid
 from base64 import b64encode
 from datetime import datetime
-
+import random
 from FANUC.configurations import (ROBOT_ID,BASE_TOPIC,
                             ORCHESTRATOR_URL,
                             UPDATE_POS_REG,
-                            SYNCH_URL)
+                            SYNCH_URL,
+                            results)
 
+u=46
 #utility Function(S)
 #send Data to zRoki
-def IMG_bytes_to_JSON(image,JSON_DATA):
+def IMG_bytes_to_JSON(image,self):
                 # reading newly downloaded file as bytes
                 # first: reading the binary stuff
                 # note the 'rb' flag
                 # result: bytes
+                JSON_DATA=self.get_JSON_DATA()
                 with open(image, 'rb') as file:
                     pub_img = file.read()
                     # second: base64 encode read data
@@ -21,10 +24,17 @@ def IMG_bytes_to_JSON(image,JSON_DATA):
                     base64_bytes = b64encode(pub_img)
                     # third: decode these bytes to text
                     # result: string (in utf-8)
+                    #print('>>>>>>',JSON_DATA)
                     base64_string = base64_bytes.decode('utf-8')
-                    JSON_DATA.get("ImageData")[0].update({"Picture":base64_string})
-                    JSON_DATA.update({"timeStamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S')})
-                    return JSON_DATA
+                    #JSON_DATA.pop(JSON_DATA.get("ImageData")["Picture"])
+                    JSON_DATA.get("ImageData")["Picture"]=base64_string
+                    ##just for debugging
+                    #JSON_DATA.get("ImageData")["Picture"]= random.randint(1, 10)
+                    JSON_DATA["timeStamp"]= datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+                    JSON_DATA["RequestId"]= str(uuid.uuid4())
+                    print(JSON_DATA["RequestId"])
+                    self.set_JSON_DATA(JSON_DATA)
+                return JSON_DATA
        
 #Robot information cycle 1
 def start_camera_cycle(obj):
@@ -35,7 +45,7 @@ def start_camera_cycle(obj):
         #start_camera_cycle(self)
         req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":199})
         print(f'[X-UH] {req.status_code}')
-        time.sleep(1)
+        #time.sleep(1)
     except requests.exceptions.RequestException as err:
         print ("[X-W-SUD] OOps: Something Else",err)
  
@@ -97,37 +107,49 @@ def parsed_Roki_Msg(Roki_Msg,self):
 
 #update robot position
 def update_POS(Roki_Msg,self):
-
+    global u
     #error checking must be implemented
-    if (Roki_Msg.get("errors") !=None) and (len(Roki_Msg.get("errors"))):
-        print(f'[X-uPOS] {Roki_Msg.get("errors")}')
-        #start camera cycle
-        #threading.Thread(target=start_camera_cycle,args=(self,)).start()
-        self.sendEvent('POS',f'POS-Reg is not updated: {Roki_Msg.get("errors")}')
+    if Roki_Msg.get("Result") !=None and Roki_Msg.get("Result") == results[3]:
+        print(f'[X-uPOS] {Roki_Msg.get("Result")}')
         return
 
-    Pose = Roki_Msg.get("Pose")
-    id =94 # cartPos
+    if Roki_Msg.get("Result") !=None and Roki_Msg.get("Result") == results[1]:
+        print(f'[X-uPOS] {Roki_Msg.get("Result")}')
+        #start camera cycle
+        #threading.Thread(target=start_camera_cycle,args=(self,)).start()
+        self.sendEvent('POS',f'POS-Reg is not updated: {Roki_Msg.get("Result")}')
+        return
+
+    if Roki_Msg.get("Result") !=None and Roki_Msg.get("Result") == results[2]:
+        print(f'[X-uPOS] {Roki_Msg.get("Result")}')
+        #start camera cycle
+        #threading.Thread(target=start_camera_cycle,args=(self,)).start()
+        self.sendEvent('Bucket',f'There is nothing to pick')
+        return
+
+    Pose = Roki_Msg.get("PoseFanuc")
+    id =u # cartPos
     if Pose:
             payload = dict([
                 ("id",id),
-                ("XX",Pose.get("xyz")[0]),
-                ("YY",Pose.get("xyz")[1]),
-                ("ZZ",Pose.get("xyz")[2]),
-                ("WW",Pose.get("wpr")[0]),
-                ("PP",Pose.get("wpr")[1]),
-                ("RR",Pose.get("wpr")[2])])
+                ("XX",round(Pose.get("XYZ")[0],3)),
+                ("YY",round(Pose.get("XYZ")[1],3)),
+                ("ZZ",round(Pose.get("XYZ")[2],3)),
+                ("WW",round(Pose.get("WPR")[0],3)),
+                ("PP",round(Pose.get("WPR")[1],3)),
+                ("RR",round(Pose.get("WPR")[2],3))])
             print(f'[X-UH-uPOS]>>> {payload}')
             try:
                 req= requests.get(f'{UPDATE_POS_REG}z_CART_POS',params=payload)
                 print(f'[X-UH-uPOS] {req.text}')
                 if int(req.text) == 200:
                     print("[X-UH-uPOS] Reachable POS....")
-                    time.sleep(0.1)
+                    time.sleep(1)
                     self.sendEvent('POS',f'POS-Reg is updated with IK Solution {Pose}')
                     self.sendEvent('RobotCycle', 'Robot cycle is initiatiated.')
                     req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":198})
                     print(f'[X-UH--uPOS] Updating POS... {req.status_code}')
+                    u=u+1
                 else:
                     print("[X-UH-uPOS] Not-Reachable POS....")
                     self.sendEvent('RobotCycle', 'Robot cycle not initiatiated.')
