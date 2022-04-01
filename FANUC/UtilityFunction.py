@@ -1,7 +1,6 @@
-import requests,threading,json,urllib.parse,time,uuid
-from base64 import b64encode
+import requests,threading,json,urllib.parse,time,uuid,random,cv2
+import base64 as b64
 from datetime import datetime
-import random
 from FANUC.configurations import (ROBOT_ID,BASE_TOPIC,
                             ORCHESTRATOR_URL,
                             UPDATE_POS_REG,
@@ -11,6 +10,23 @@ from FANUC.configurations import (ROBOT_ID,BASE_TOPIC,
 u=46
 #utility Function(S)
 #send Data to zRoki
+
+from pprint import pprint
+def IMGtob64Str(image,self):
+    JSON_DATA=self.get_JSON_DATA()
+    img_array=cv2.imread(image, cv2.IMREAD_GRAYSCALE)
+    imgen64=b64.standard_b64encode(img_array)
+    #JSON_DATA.get("ImageData")["Picture"]=img_array.tolist()
+    JSON_DATA.get("ImageData")["Picture"] = str(b64.standard_b64encode(imgen64),'utf-8')
+    # json.dump(JSON_DATA,indent=4,separators=(',',': '))
+    JSON_DATA["timeStamp"]= datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+    JSON_DATA["RequestId"]= str(uuid.uuid4())
+    print(f'[X-UH-IMGtob64Str] {JSON_DATA["RequestId"]}')
+    self.set_JSON_DATA(JSON_DATA)
+    return JSON_DATA
+
+
+
 def IMG_bytes_to_JSON(image,self):
                 # reading newly downloaded file as bytes
                 # first: reading the binary stuff
@@ -21,7 +37,7 @@ def IMG_bytes_to_JSON(image,self):
                     pub_img = file.read()
                     # second: base64 encode read data
                     # result: bytes (again)
-                    base64_bytes = b64encode(pub_img)
+                    base64_bytes = b64.b64encode(pub_img)
                     # third: decode these bytes to text
                     # result: string (in utf-8)
                     #print('>>>>>>',JSON_DATA)
@@ -32,7 +48,7 @@ def IMG_bytes_to_JSON(image,self):
                     #JSON_DATA.get("ImageData")["Picture"]= random.randint(1, 10)
                     JSON_DATA["timeStamp"]= datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
                     JSON_DATA["RequestId"]= str(uuid.uuid4())
-                    print(JSON_DATA["RequestId"])
+                    #print(JSON_DATA["RequestId"])
                     self.set_JSON_DATA(JSON_DATA)
                 return JSON_DATA
        
