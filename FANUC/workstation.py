@@ -4,8 +4,8 @@ from FANUC import app
 from flask import request,jsonify
 from FANUC.configurations import*
 from  flask_mqtt import Mqtt
-from FANUC.UtilityFunction import ( IMG_bytes_to_JSON,
-                                    update_POS)
+from FANUC.UtilityFunction import* 
+
 # Anonymous FTP login
 from ftplib import FTP
 #mqtt = Mqtt(app)
@@ -56,9 +56,9 @@ class RobotCell():
         self.IMG_Count = self.IMG_Count+1
  
     def toJsonFile(self):
-        self.toJson.append(self.get_JSON_DATA().copy())
+        #self.toJson.append(self.get_JSON_DATA().copy())
         with open('fromFANUC.json', 'w') as outfile:
-            json.dump(self.toJson, outfile,
+            json.dump(self.get_JSON_DATA(), outfile,
                         indent=4)#,  separators=(',',': ')
 
 
@@ -231,8 +231,10 @@ class RobotCell():
                 # now: encoding the data to json
                 # result: string          
 
-            JSON_STR=json.dumps(IMG_bytes_to_JSON(f'IMG{self.get_IMG_Count()}.png',self),indent=2)
-            mqtt.publish(BASE_TOPIC_DAQ.format(self.ID)+"fromFANUC",JSON_STR,retain=False)
+            JSON_STR=json.dumps(IMGtob64Str(f'IMG{self.get_IMG_Count()}.png',self),
+                                indent=4,separators=(',',': '))
+            #print(BASE_TOPIC_DAQ.format(self.ID))
+            mqtt.publish(BASE_TOPIC+"fromFANUC",JSON_STR,retain=False)
             self.inc_IMG_Count()
             #time.sleep(1)
             threading.Thread(target=self.toJsonFile).start()
