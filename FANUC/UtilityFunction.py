@@ -1,5 +1,6 @@
 import requests,threading,json,urllib.parse,time,uuid,random,cv2
 import base64 as b64
+import numpy as np
 from datetime import datetime
 from FANUC.configurations import (ROBOT_ID,BASE_TOPIC,
                             ORCHESTRATOR_URL,
@@ -11,14 +12,18 @@ u=46
 #utility Function(S)
 #send Data to zRoki
 
-from pprint import pprint
 def IMGtob64Str(image,self):
+
     JSON_DATA=self.get_JSON_DATA()
     img_array=cv2.imread(image, cv2.IMREAD_GRAYSCALE)
     imgen64=b64.standard_b64encode(img_array)
     #JSON_DATA.get("ImageData")["Picture"]=img_array.tolist()
-    JSON_DATA.get("ImageData")["Picture"] = str(b64.standard_b64encode(imgen64),'utf-8')
+    JSON_DATA.get("ImageData")["Picture"] = str(imgen64,'utf-8')
     # json.dump(JSON_DATA,indent=4,separators=(',',': '))
+    JSON_DATA["timeStamp"]= datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+    JSON_DATA["RequestId"]= str(uuid.uuid4())
+    #print(f'[X-UH-IMGtob64Str] {JSON_DATA["RequestId"]}')
+    self.set_JSON_DATA(JSON_DATA)
     JSON_DATA["timeStamp"]= datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
     JSON_DATA["RequestId"]= str(uuid.uuid4())
     print(f'[X-UH-IMGtob64Str] {JSON_DATA["RequestId"]}')
@@ -165,7 +170,7 @@ def update_POS(Roki_Msg,self):
                     self.sendEvent('RobotCycle', 'Robot cycle is initiatiated.')
                     req= requests.get(f'{ORCHESTRATOR_URL}',params={"CMD":198})
                     print(f'[X-UH--uPOS] Updating POS... {req.status_code}')
-                    u=u+1
+                    #u=u+1
                 else:
                     print("[X-UH-uPOS] Not-Reachable POS....")
                     self.sendEvent('RobotCycle', 'Robot cycle not initiatiated.')
